@@ -8,6 +8,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use num_complex::Complex;
+
 pub mod state;
 use crate::state::State;
 
@@ -61,15 +63,19 @@ const MU_REF: f64 = 1.716e-05;
 const T_REF: f64 = 273.0;
 const S: f64 = 111.0;
 
-fn sutherland_mu(T: f64) -> f64 {
+fn sutherland_mu(T: Complex<f64>) -> Complex<f64> {
+    return MU_REF*Complex::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
+}
+
+fn sutherland_mu_real(T: f64) -> f64 {
     return MU_REF*f64::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
 }
 
-fn sutherland_mu_derivative(T: f64) -> f64 {
-    return MU_REF*(T_REF+S)*f64::sqrt(T/T_REF)*(3.0*S+T)/(2.0*T_REF*(S+T)*(S+T));
+fn sutherland_mu_derivative(T: Complex<f64>) -> Complex<f64> {
+    return MU_REF*(T_REF+S)*Complex::sqrt(T/T_REF)*(3.0*S+T)/(2.0*T_REF*(S+T)*(S+T));
 }
 
-fn density_viscosity_product(g: f64, pm: &Parameters) -> f64 {
+fn density_viscosity_product(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
 /*
     Ratio of density x viscosity product at a given point in the boundary layer
 */
@@ -80,7 +86,7 @@ fn density_viscosity_product(g: f64, pm: &Parameters) -> f64 {
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
-fn density_viscosity_product_derivative(g: f64, pm: &Parameters) -> f64{
+fn density_viscosity_product_derivative(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
@@ -112,7 +118,7 @@ fn main() {
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
     let rho_e = p_e/(R*T_e);
-    let mu_e = sutherland_mu(T_e);
+    let mu_e = sutherland_mu_real(T_e);
     let k_e = mu_e*C_p/Pr;
     let h_wall = C_p*T_wall;
 
@@ -152,12 +158,12 @@ fn main() {
         return dzdeta;
     }
 
-    let f=0.0;
-    let fd = 0.0;
-    let g = pm.h_wall/pm.h_e;
-    let y = 0.0;
-    let fdd = 0.5;
-    let gd = 1.0;
+    let f  = Complex::new(0.0,0.0);
+    let fd = Complex::new(0.0,0.0);
+    let g = Complex::new(pm.h_wall/pm.h_e, 0.0);
+    let y = Complex::new(0.0, 0.0);
+    let fdd = Complex::new(0.5, 0.0);
+    let gd = Complex::new(1.0, 0.0);
 
     let mut eta0 = 0.0;
     let nsteps = 500;
