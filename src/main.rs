@@ -182,27 +182,56 @@ fn main() {
         h_wall: h_wall,
 	};
 
-    let fdd = Complex64::new(0.5, 0.0);
-    let gd = Complex64::new(1.0, 0.0);
-    let z0 = integrate_through_bl(fdd, gd, &pm);
+    let mut error = 1e99;
+    let tol = 1e-6;
+    let mut iterations = 0;
+    let mut fdd = 0.5;
+    let mut gd  = 1.0;
 
-    let fdd2= Complex64::new(0.5001, 0.0);
-    let gd2= Complex64::new(1.0, 0.0);
-    let zfp= integrate_through_bl(fdd2, gd2, &pm);
-    let dzdfdd = (zfp-z0)/0.0001;
+    while error>tol {
+        //let fdd = Complex64::new(0.5, 0.0);
+        //let gd = Complex64::new(1.0, 0.0);
+        //let state_final = integrate_through_bl(fdd, gd, &pm);
+        //let fd_final = state_final.fd;
+        //let g_final = state_final.g;
 
-    let fdd2i= Complex64::new(0.5, 1e-16);
-    let gd2i= Complex64::new(1.0, 0.0);
-    let zfpi= integrate_through_bl(fdd2i, gd2i, &pm);
-    let dzdfddi= (zfpi)/1e-16;
+        let eps = 1e-16;
+        let fdd_pfdd= Complex64::new(fdd, eps);
+        let gd_pfdd = Complex64::new(gd, 0.0);
+        let state_dfdd= integrate_through_bl(fdd_pfdd, gd_pfdd, &pm);
+        let d_fd_dfdd = (state_dfdd.fd.im)/eps; // d_fd_dfdd == df1_dtau
+        let d_g_dfdd = (state_dfdd.g.im)/eps;   // d_g_dfdd  == df2_dtau
 
-    println!(" z= {:#?}", z0);
-    println!("Error in final values of fd= {:?} g= {:?}", z0.fd-1.0, z0.g-1.0);
+        let fdd_pgd = Complex64::new(fdd, 0.0);
+        let gd_pgd  = Complex64::new(gd, eps);
+        let state_dgd = integrate_through_bl(fdd_pgd, gd_pgd, &pm);
+        let d_fd_dgd = (state_dgd.fd.im)/1e-16; // d_fd_dgd == df1_dq
+        let d_g_dgd = (state_dgd.g.im)/1e-16;   // d_g_dgd  == df2_dq
 
-    println!(" zp= {:#?}", zfp);
+        let fd_err = state_dgd.fd.re - 1.0; // f1 == fd_err
+        let g_err  = state_dgd.g.re - 1.0;  // f2 == g_err
+        error = f64::sqrt(fd_err*fd_err + g_err*g_err);
 
-    println!(" dzfdd real= {:#?}", dzdfdd);
-    println!(" dzfdd imag= {:#?}", dzdfddi);
+        let diff_fdd = (fd_err*d_g_dgd/d_fd_dgd - g_err)
+                      /(d_g_dfdd - d_g_dgd*d_fd_dfdd/d_fd_dgd);
+        let diff_gd  = (fd_err*d_g_dfdd/d_fd_dfdd - g_err)
+                      /(d_g_dgd - d_g_dfdd*d_fd_dgd/d_fd_dfdd);
+        fdd += diff_fdd;
+        gd  += diff_gd;
+        println!(" iter {:?} err {:?} state_final= {:#?}", iterations, error, state_dgd);
+        println!(" fdd {:#?} change ({:#?}) gd {:#?} change ({:#?})", fdd, diff_fdd, gd, diff_gd);
+        println!(" fd_err {:#?} g_err {:#?}", fd_err, g_err);
+
+        iterations += 1;
+        if iterations>100 { panic!("Too many iterations of newton solve"); }
+    }
+
+    //println!("Error in final values of fd= {:?} g= {:?}", state_final.fd.re-1.0,
+    //                                                      state_final.g.re-1.0);
+    //println!("d_g_dfdd:  {:#?}", d_g_dfdd);
+    //println!("d_fd_dfdd: {:#?}", d_fd_dfdd);
+    //println!("d_g_dgd:   {:#?}", d_g_dgd);
+    //println!("d_fd_dgd:  {:#?}", d_fd_dgd);
 
     println!("Done.");
 }
