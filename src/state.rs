@@ -5,18 +5,18 @@
     @author: Nick Gibbons
 */
 
-use num_complex::Complex;
+use num_complex::Complex64;
 use std::ops::{Add,Sub,Div,Mul};
 
 // TODO: Maybe we don't want copy here???
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct State {
-    pub f: Complex<f64>,
-    pub fd: Complex<f64>,
-    pub fdd: Complex<f64>,
-    pub g: Complex<f64>,
-    pub gd: Complex<f64>,
-    pub y: Complex<f64>,
+    pub f: Complex64,
+    pub fd: Complex64,
+    pub fdd: Complex64,
+    pub g: Complex64,
+    pub gd: Complex64,
+    pub y: Complex64,
 }
 
 impl Add for State{
@@ -33,9 +33,9 @@ impl Add for State{
     }
 }
 
-impl Add<Complex<f64>> for State{
+impl Add<Complex64> for State{
     type Output = Self;
-    fn add(self, rhs: Complex<f64>) -> Self {
+    fn add(self, rhs: Complex64) -> Self {
         Self {
             f:   self.f + rhs,
             fd:  self.fd + rhs,
@@ -75,9 +75,9 @@ impl Mul<State> for State{
     }
 }
 
-impl Mul<Complex<f64>> for State{
+impl Mul<Complex64> for State{
     type Output = Self;
-    fn mul(self, rhs: Complex<f64>) -> Self {
+    fn mul(self, rhs: Complex64) -> Self {
         Self {
             f:   self.f*rhs,
             fd:  self.fd*rhs,
@@ -89,7 +89,7 @@ impl Mul<Complex<f64>> for State{
     }
 }
 
-impl Mul<State> for Complex<f64> {
+impl Mul<State> for Complex64 {
     type Output = State;
     fn mul(self, rhs: State) -> State {
         State {
@@ -159,7 +159,7 @@ impl Div for State{
     }
 }
 
-impl Div<State> for Complex<f64> {
+impl Div<State> for Complex64 {
     type Output = State;
     fn div(self, rhs: State) -> State {
         State {
@@ -173,9 +173,9 @@ impl Div<State> for Complex<f64> {
     }
 }
 
-impl Div<Complex<f64>> for State{
+impl Div<Complex64> for State{
     type Output = Self;
-    fn div(self, rhs: Complex<f64>) -> Self {
+    fn div(self, rhs: Complex64) -> Self {
         Self {
             f:   self.f/rhs,
             fd:  self.fd/rhs,
@@ -218,12 +218,13 @@ impl Div<f64> for State{
 impl State{
     pub fn abs(self) -> Self {
         Self {
-            f:   Complex::new(f64::abs(self.f.re),   self.f.im),
-            fd:  Complex::new(f64::abs(self.fd.re),  self.fd.im),
-            fdd: Complex::new(f64::abs(self.fdd.re), self.fdd.im),
-            g:   Complex::new(f64::abs(self.g.re),   self.g.im),
-            gd:  Complex::new(f64::abs(self.gd.re),  self.gd.im),
-            y:   Complex::new(f64::abs(self.y.re),   self.y.im),
+            f:   Complex64::new(f64::abs(self.f.re),   self.f.im),
+            fd:  Complex64::new(f64::abs(self.fd.re),  self.fd.im),
+            fdd: Complex64::new(f64::abs(self.fdd.re), self.fdd.im),
+            g:   Complex64::new(f64::abs(self.g.re),   self.g.im),
+            gd:  Complex64::new(f64::abs(self.gd.re),  self.gd.im),
+            y:   Complex64::new(f64::abs(self.y.re),   self.y.im),
         }
     }
 }
+

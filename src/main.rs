@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use num_complex::Complex;
+use num_complex::Complex64;
 
 pub mod state;
 use crate::state::State;
@@ -63,19 +63,23 @@ const MU_REF: f64 = 1.716e-05;
 const T_REF: f64 = 273.0;
 const S: f64 = 111.0;
 
-fn sutherland_mu_cplx(T: Complex<f64>) -> Complex<f64> {
-    return MU_REF*Complex::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
+//fn sutherland_mu<TYP>(T: TYP) -> TYP {
+//    return MU_REF*TYP::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
+//}
+
+fn sutherland_mu_cplx(T: Complex64) -> Complex64 {
+    return MU_REF*Complex64::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
 }
 
 fn sutherland_mu_real(T: f64) -> f64 {
     return MU_REF*f64::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
 }
 
-fn sutherland_mu_derivative(T: Complex<f64>) -> Complex<f64> {
-    return MU_REF*(T_REF+S)*Complex::sqrt(T/T_REF)*(3.0*S+T)/(2.0*T_REF*(S+T)*(S+T));
+fn sutherland_mu_derivative(T: Complex64) -> Complex64 {
+    return MU_REF*(T_REF+S)*Complex64::sqrt(T/T_REF)*(3.0*S+T)/(2.0*T_REF*(S+T)*(S+T));
 }
 
-fn density_viscosity_product(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
+fn density_viscosity_product(g: Complex64, pm: &Parameters) -> Complex64 {
 /*
     Ratio of density x viscosity product at a given point in the boundary layer
 */
@@ -86,7 +90,7 @@ fn density_viscosity_product(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
-fn density_viscosity_product_derivative(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
+fn density_viscosity_product_derivative(g: Complex64, pm: &Parameters) -> Complex64 {
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
@@ -117,11 +121,11 @@ fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
     return dzdeta;
 }
 
-fn integrate_through_bl(fdd: Complex<f64>, gd: Complex<f64>, pm: &Parameters) -> State {
-    let f  = Complex::new(0.0,0.0);
-    let fd = Complex::new(0.0,0.0);
-    let g = Complex::new(pm.h_wall/pm.h_e, 0.0);
-    let y = Complex::new(0.0, 0.0);
+fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> State {
+    let f  = Complex64::new(0.0,0.0);
+    let fd = Complex64::new(0.0,0.0);
+    let g = Complex64::new(pm.h_wall/pm.h_e, 0.0);
+    let y = Complex64::new(0.0, 0.0);
 
     let mut eta0 = 0.0;
     let nsteps = 500;
@@ -178,17 +182,17 @@ fn main() {
         h_wall: h_wall,
 	};
 
-    let fdd = Complex::new(0.5, 0.0);
-    let gd = Complex::new(1.0, 0.0);
+    let fdd = Complex64::new(0.5, 0.0);
+    let gd = Complex64::new(1.0, 0.0);
     let z0 = integrate_through_bl(fdd, gd, &pm);
 
-    let fdd2= Complex::new(0.5001, 0.0);
-    let gd2= Complex::new(1.0, 0.0);
+    let fdd2= Complex64::new(0.5001, 0.0);
+    let gd2= Complex64::new(1.0, 0.0);
     let zfp= integrate_through_bl(fdd2, gd2, &pm);
     let dzdfdd = (zfp-z0)/0.0001;
 
-    let fdd2i= Complex::new(0.5, 1e-16);
-    let gd2i= Complex::new(1.0, 0.0);
+    let fdd2i= Complex64::new(0.5, 1e-16);
+    let gd2i= Complex64::new(1.0, 0.0);
     let zfpi= integrate_through_bl(fdd2i, gd2i, &pm);
     let dzdfddi= (zfpi)/1e-16;
 
