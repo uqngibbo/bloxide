@@ -63,7 +63,7 @@ const MU_REF: f64 = 1.716e-05;
 const T_REF: f64 = 273.0;
 const S: f64 = 111.0;
 
-fn sutherland_mu(T: Complex<f64>) -> Complex<f64> {
+fn sutherland_mu_cplx(T: Complex<f64>) -> Complex<f64> {
     return MU_REF*Complex::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
 }
 
@@ -82,7 +82,7 @@ fn density_viscosity_product(g: Complex<f64>, pm: &Parameters) -> Complex<f64> {
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu(T);
+   let mu = sutherland_mu_cplx(T);
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
@@ -90,7 +90,7 @@ fn density_viscosity_product_derivative(g: Complex<f64>, pm: &Parameters) -> Com
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu(T);
+   let mu = sutherland_mu_cplx(T);
 
    let dmudT = sutherland_mu_derivative(T);
    let drhodT = -pm.p_e/pm.R/T/T;
@@ -102,6 +102,42 @@ fn density_viscosity_product_derivative(g: Complex<f64>, pm: &Parameters) -> Com
    return (rho*dmudg + mu*drhodg)/(pm.rho_e*pm.mu_e);
 }
     
+fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
+    let f = z.f; let fd = z.fd; let fdd = z.fdd;
+    let g = z.g; let gd = z.gd; let y   = z.y;
+
+    let C = density_viscosity_product(g, &pm);
+    let Cd= density_viscosity_product_derivative(g, &pm);
+
+    let fddd = 1.0/C*(-f*fdd - Cd*fdd);
+    let gdd = pm.Pr/C*(-gd*(Cd/pm.Pr+f) - C*pm.u_e*pm.u_e/pm.h_e*fdd*fdd);
+    let yd = f64::sqrt(2.0*pm.xi)/pm.u_e*pm.h_e/pm.p_e*(pm.gamma-1.0)/pm.gamma*g;
+    let dzdeta = State {f: fd, fd: fdd, fdd: fddd, g: gd, gd: gdd, y: yd};
+
+    return dzdeta;
+}
+
+fn integrate_through_bl(fdd: Complex<f64>, gd: Complex<f64>, pm: &Parameters) -> State {
+    let f  = Complex::new(0.0,0.0);
+    let fd = Complex::new(0.0,0.0);
+    let g = Complex::new(pm.h_wall/pm.h_e, 0.0);
+    let y = Complex::new(0.0, 0.0);
+
+    let mut eta0 = 0.0;
+    let nsteps = 500;
+    let eta_final = 5.0;
+    let deta = (eta_final-eta0)/(nsteps as f64);
+    let mut z0 = State {f: f, fd: fd, fdd: fdd, g: g, gd: gd, y: y};
+
+    for _ in 0 .. nsteps {
+        let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
+        eta0 = eta1; z0 = z1;
+    }
+
+    println!("  final eta= {:?}", eta0);
+    return z0;
+}
+
 
 fn main() {
     println!("rustbl: A compressible boundary layer analysis code.");
@@ -142,60 +178,27 @@ fn main() {
         h_wall: h_wall,
 	};
 
-
-    fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
-        let f = z.f; let fd = z.fd; let fdd = z.fdd;
-        let g = z.g; let gd = z.gd; let y   = z.y;
-
-        let C = density_viscosity_product(g, &pm);
-        let Cd= density_viscosity_product_derivative(g, &pm);
-
-        let fddd = 1.0/C*(-f*fdd - Cd*fdd);
-        let gdd = pm.Pr/C*(-gd*(Cd/pm.Pr+f) - C*pm.u_e*pm.u_e/pm.h_e*fdd*fdd);
-        let yd = f64::sqrt(2.0*pm.xi)/pm.u_e*pm.h_e/pm.p_e*(pm.gamma-1.0)/pm.gamma*g;
-        let dzdeta = State {f: fd, fd: fdd, fdd: fddd, g: gd, gd: gdd, y: yd};
-
-        return dzdeta;
-    }
-
-    let f  = Complex::new(0.0,0.0);
-    let fd = Complex::new(0.0,0.0);
-    let g = Complex::new(pm.h_wall/pm.h_e, 0.0);
-    let y = Complex::new(0.0, 0.0);
     let fdd = Complex::new(0.5, 0.0);
     let gd = Complex::new(1.0, 0.0);
+    let z0 = integrate_through_bl(fdd, gd, &pm);
 
-    let mut eta0 = 0.0;
-    let nsteps = 500;
-    let eta_final = 5.0;
-    let deta = (eta_final-eta0)/(nsteps as f64);
-    let mut z0 = State {f: f, fd: fd, fdd: fdd, g: g, gd: gd, y: y};
+    let fdd2= Complex::new(0.5001, 0.0);
+    let gd2= Complex::new(1.0, 0.0);
+    let zfp= integrate_through_bl(fdd2, gd2, &pm);
+    let dzdfdd = (zfp-z0)/0.0001;
 
-    for _ in 0 .. nsteps {
-        let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
-        eta0 = eta1; z0 = z1;
-    }
+    let fdd2i= Complex::new(0.5, 1e-16);
+    let gd2i= Complex::new(1.0, 0.0);
+    let zfpi= integrate_through_bl(fdd2i, gd2i, &pm);
+    let dzdfddi= (zfpi)/1e-16;
 
-    println!("  final eta= {:?}", eta0);
-    {
-        let f = z0.f; let fd = z0.fd; let fdd = z0.fdd;
-        let g = z0.g; let gd = z0.gd; let y   = z0.y;
-        println!(" f= {:?} fd= {:?} fdd= {:?}", f, fd, fdd);
-        println!(" g= {:?} gd= {:?}   y= {:?}", g, gd, y);
-        println!("Error in final values of fd= {:?} g= {:?}", fd-1.0, g-1.0);
-    }
+    println!(" z= {:#?}", z0);
+    println!("Error in final values of fd= {:?} g= {:?}", z0.fd-1.0, z0.g-1.0);
 
-    //let nstep = 10000;
-    //let h = 1.0/(nstep as f64);
-    //let mut x0 = array![0.0, 0.0, 0.0];
-    //let start = Instant::now();
-    //for _ in 0..nstep {
-    //    let (t1, x1, _err) = rkf45_step(test_system1, t0, h, x0);
-    //    t0 = t1; x0 = x1;
-    //}
-	//let elapsed = start.elapsed();
-    //println!("  elapsed_time= {:?}", elapsed);
-    //println!("  x           = {}", x0);
-    //println!("  exact       = {:?}", solution1(t0));
+    println!(" zp= {:#?}", zfp);
+
+    println!(" dzfdd real= {:#?}", dzdfdd);
+    println!(" dzfdd imag= {:#?}", dzdfddi);
+
     println!("Done.");
 }
