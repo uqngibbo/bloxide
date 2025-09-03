@@ -111,7 +111,8 @@ fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
     let g = z.g; let gd = z.gd; let y   = z.y;
 
     let C = density_viscosity_product(g, &pm);
-    let Cd= density_viscosity_product_derivative(g, &pm);
+    let dCdg= density_viscosity_product_derivative(g, &pm);
+    let Cd = dCdg*gd; // oops it's dCdeta = dCdg*dgdeta
 
     let fddd = 1.0/C*(-f*fdd - Cd*fdd);
     let gdd = pm.Pr/C*(-gd*(Cd/pm.Pr+f) - C*pm.u_e*pm.u_e/pm.h_e*fdd*fdd);
@@ -133,12 +134,11 @@ fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> State
     let deta = (eta_final-eta0)/(nsteps as f64);
     let mut z0 = State {f: f, fd: fd, fdd: fdd, g: g, gd: gd, y: y};
 
-    for _ in 0 .. nsteps {
+    for step in 0 .. nsteps {
         let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
         eta0 = eta1; z0 = z1;
     }
 
-    println!("  final eta= {:?}", eta0);
     return z0;
 }
 
@@ -182,6 +182,7 @@ fn main() {
         h_wall: h_wall,
 	};
 
+
     let mut error = 1e99;
     let tol = 1e-6;
     let mut iterations = 0;
@@ -189,12 +190,6 @@ fn main() {
     let mut gd  = 1.0;
 
     while error>tol {
-        //let fdd = Complex64::new(0.5, 0.0);
-        //let gd = Complex64::new(1.0, 0.0);
-        //let state_final = integrate_through_bl(fdd, gd, &pm);
-        //let fd_final = state_final.fd;
-        //let g_final = state_final.g;
-
         let eps = 1e-16;
         let fdd_pfdd= Complex64::new(fdd, eps);
         let gd_pfdd = Complex64::new(gd, 0.0);
@@ -218,13 +213,20 @@ fn main() {
                       /(d_g_dgd - d_g_dfdd*d_fd_dgd/d_fd_dfdd);
         fdd += diff_fdd;
         gd  += diff_gd;
-        println!(" iter {:?} err {:?} state_final= {:#?}", iterations, error, state_dgd);
-        println!(" fdd {:#?} change ({:#?}) gd {:#?} change ({:#?})", fdd, diff_fdd, gd, diff_gd);
-        println!(" fd_err {:#?} g_err {:#?}", fd_err, g_err);
+        //println!(" iter {:?} err {:?} state_final= {:#?}", iterations, error, state_dgd);
+        //println!(" fdd {:#?} change ({:#?}) gd {:#?} change ({:#?})", fdd, diff_fdd, gd, diff_gd);
+        //println!(" fd_err {:#?} g_err {:#?}", fd_err, g_err);
 
         iterations += 1;
         if iterations>100 { panic!("Too many iterations of newton solve"); }
     }
+
+    println!("Got fdd {:#?} gd {:#?}", fdd, gd);
+    let fdd_final = Complex64::new(fdd, 0.0);
+    let gd_final = Complex64::new(gd, 0.0);
+    let state_final = integrate_through_bl(fdd_final, gd_final, &pm);
+
+    println!("Final state {:#?}", state_final);
 
     //println!("Error in final values of fd= {:?} g= {:?}", state_final.fd.re-1.0,
     //                                                      state_final.g.re-1.0);
