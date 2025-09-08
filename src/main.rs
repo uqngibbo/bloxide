@@ -9,9 +9,24 @@
 #![allow(unused_variables)]
 
 use num_complex::Complex64;
+use num_complex::ComplexFloat;
+use std::ops::{Add,Mul,Div,Sub};
+
 
 pub mod state;
 use crate::state::State;
+
+
+// Super traits to allow mixed complex/real arithmetic
+trait Cplx<T>: Mul<f64, Output = T> + Add<f64, Output = T>   + Div<f64, Output = T>   + Sub<f64, Output = T> {}
+impl<T> Cplx<T> for T where T: Mul<f64, Output = T>   + Add<f64, Output = T>   + Div<f64, Output = T>   + Sub<f64, Output = T> {}
+
+
+trait Mxd<T>:    Mul<T,Output = T>   + Add<T,   Output = T>   + Div<T,   Output = T>   + Sub<T,   Output = T>
+               + Mul<f64, Output = f64> + Add<f64, Output = f64> + Div<f64, Output = f64> + Sub<f64, Output = f64> {}
+impl<T> Mxd<T> for f64 where f64: Mul<T, Output = T>   + Add<T, Output = T>   + Div<T, Output = T>   + Sub<T, Output = T>
+                                + Mul<f64, Output = f64> + Add<f64, Output = f64> + Div<f64, Output = f64> + Sub<f64, Output = f64> {}
+
 
 fn rkf45_step(
     f : fn(f64, State, &Parameters) -> State,
@@ -63,16 +78,9 @@ const MU_REF: f64 = 1.716e-05;
 const T_REF: f64 = 273.0;
 const S: f64 = 111.0;
 
-//fn sutherland_mu<TYP>(T: TYP) -> TYP {
-//    return MU_REF*TYP::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
-//}
-
-fn sutherland_mu_cplx(T: Complex64) -> Complex64 {
-    return MU_REF*Complex64::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
-}
-
-fn sutherland_mu_real(T: f64) -> f64 {
-    return MU_REF*f64::sqrt(T/T_REF)*(T/T_REF)*(T_REF + S)/(T + S);
+// T here is a generic type, not the temperature!
+fn sutherland_mu<T: ComplexFloat>(TEMP: T) -> T where T: Cplx<T>, f64: Mxd<T> {
+    return MU_REF*ComplexFloat::sqrt(TEMP/T_REF)*(TEMP/T_REF)*(T_REF + S)/(TEMP + S);
 }
 
 fn sutherland_mu_derivative(T: Complex64) -> Complex64 {
@@ -86,7 +94,7 @@ fn density_viscosity_product(g: Complex64, pm: &Parameters) -> Complex64 {
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu_cplx(T);
+   let mu = sutherland_mu(T);
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
@@ -94,7 +102,7 @@ fn density_viscosity_product_derivative(g: Complex64, pm: &Parameters) -> Comple
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu_cplx(T);
+   let mu = sutherland_mu(T);
 
    let dmudT = sutherland_mu_derivative(T);
    let drhodT = -pm.p_e/pm.R/T/T;
@@ -158,7 +166,8 @@ fn main() {
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
     let rho_e = p_e/(R*T_e);
-    let mu_e = sutherland_mu_real(T_e);
+    let mu_e = sutherland_mu(T_e);
+
     let k_e = mu_e*C_p/Pr;
     let h_wall = C_p*T_wall;
 
