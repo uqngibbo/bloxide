@@ -83,11 +83,11 @@ fn sutherland_mu<T: ComplexFloat>(TEMP: T) -> T where T: Cplx<T>, f64: Mxd<T> {
     return MU_REF*ComplexFloat::sqrt(TEMP/T_REF)*(TEMP/T_REF)*(T_REF + S)/(TEMP + S);
 }
 
-fn sutherland_mu_derivative(T: Complex64) -> Complex64 {
-    return MU_REF*(T_REF+S)*Complex64::sqrt(T/T_REF)*(3.0*S+T)/(2.0*T_REF*(S+T)*(S+T));
+fn sutherland_mu_derivative<T: ComplexFloat>(TEMP: T) -> T where T: Cplx<T>, f64: Mxd<T> {
+    return MU_REF*(T_REF+S)*ComplexFloat::sqrt(TEMP/T_REF)*(3.0*S+TEMP)/(2.0*T_REF*(S+TEMP)*(S+TEMP));
 }
 
-fn density_viscosity_product(g: Complex64, pm: &Parameters) -> Complex64 {
+fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
 /*
     Ratio of density x viscosity product at a given point in the boundary layer
 */
@@ -98,7 +98,7 @@ fn density_viscosity_product(g: Complex64, pm: &Parameters) -> Complex64 {
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
-fn density_viscosity_product_derivative(g: Complex64, pm: &Parameters) -> Complex64 {
+fn density_viscosity_product_derivative<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
    let T = g*pm.h_e/pm.C_p; 
    //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
    let rho = pm.p_e/(pm.R*T);
