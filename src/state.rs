@@ -228,3 +228,16 @@ impl State{
     }
 }
 
+impl State{
+    pub fn wall_state(fdd: f64, gd: f64, h_wall: f64, h_e: f64 ) -> Self {
+        Self {
+            f:   Complex64::new(0.0, 0.0),
+            fd:  Complex64::new(0.0, 0.0),
+            fdd: Complex64::new(fdd, 0.0),
+            g:   Complex64::new(h_wall/h_e, 0.0),
+            gd:  Complex64::new(gd, 0.0),
+            y:   Complex64::new(0.0, 0.0),
+        }
+    }
+}
+

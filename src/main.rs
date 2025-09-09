@@ -68,11 +68,19 @@ struct Parameters {
     u_e: f64,
     k_e: f64,
     xi: f64,
+    x: f64,
     T_wall: f64,
     h_wall: f64,
 }
 
-//use std::time::Instant;
+fn soft_max<T: ComplexFloat>(a: T, b: f64) -> T where T: Cplx<T>, f64: Mxd<T> {
+    let da = a-b;
+    let scale = 0.5*(a+b);
+    let eps = 1e-6*scale + 1e-12;
+    let max = scale + 0.5*ComplexFloat::sqrt(da*da + eps*eps);
+    return max;
+}
+
 
 const MU_REF: f64 = 1.716e-05;
 const T_REF: f64 = 273.0;
@@ -91,21 +99,21 @@ fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where 
 /*
     Ratio of density x viscosity product at a given point in the boundary layer
 */
-   let T = g*pm.h_e/pm.C_p; 
-   //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
-   let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu(T);
+   let mut Temp = g*pm.h_e/pm.C_p; 
+   Temp = soft_max(Temp, 100.0);
+   let rho = pm.p_e/(pm.R*Temp);
+   let mu = sutherland_mu(Temp);
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
 fn density_viscosity_product_derivative<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
-   let T = g*pm.h_e/pm.C_p; 
-   //T = f64::max(T, 100.0); // Adds non analyticity FIXME????
-   let rho = pm.p_e/(pm.R*T);
-   let mu = sutherland_mu(T);
+   let mut Temp = g*pm.h_e/pm.C_p; 
+   Temp = soft_max(Temp, 100.0);
+   let rho = pm.p_e/(pm.R*Temp);
+   let mu = sutherland_mu(Temp);
 
-   let dmudT = sutherland_mu_derivative(T);
-   let drhodT = -pm.p_e/pm.R/T/T;
+   let dmudT = sutherland_mu_derivative(Temp);
+   let drhodT = -pm.p_e/pm.R/Temp/Temp;
    let dTdg = pm.h_e/pm.C_p;
 
    let drhodg = drhodT*dTdg;
@@ -144,10 +152,35 @@ fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> State
 
     for step in 0 .. nsteps {
         let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
+        //println!("    step {:?}: [{:?},{:?},{:?},{:?},{:?},{:?}] ", step, z0.f.re, z0.fd.re, z0.fdd.re, z0.g.re, z0.gd.re, z0.y.re);
+        //println!("    step {:?}: [fd={:?} g={:?} y={:?}] ", step, z0.fd.re, z0.g.re, z0.y.re);
         eta0 = eta1; z0 = z1;
     }
 
     return z0;
+}
+
+fn skin_friction(z: State, pm: &Parameters) -> f64 {
+/*
+    Return tau, using equations 6.71 and 6.59 from Anderson
+*/
+    let rhomuw_on_rhomue = density_viscosity_product(z.g.re, &pm);
+    let fddw = z.fdd.re;
+    let Rex = pm.rho_e*pm.u_e/pm.mu_e*pm.x;
+    let cf = f64::sqrt(2.0)*rhomuw_on_rhomue*fddw/f64::sqrt(Rex);
+    let tau = 0.5*cf*pm.rho_e*pm.u_e*pm.u_e;
+    return tau;
+}
+
+fn heat_transfer(z: State, pm: &Parameters) -> f64 {
+/*
+    Return q, using equations 6.79 and ??? from Anderson. Dodgy????
+*/
+    let rhomuw_on_mue = density_viscosity_product(z.g.re, &pm)*pm.rho_e;
+    let gdw = z.gd.re;
+    let Rex = pm.rho_e*pm.u_e/pm.mu_e*pm.x;
+    let qw = pm.u_e/f64::sqrt(2.0)*rhomuw_on_mue/pm.Pr*pm.h_e*gdw/f64::sqrt(Rex);
+    return qw;
 }
 
 
@@ -162,6 +195,13 @@ fn main() {
 	let u_e = 604.5;
 	let T_e = 108.1;
     let T_wall = 307.0;
+    let x = 2.1125;  // metres
+
+	//let p_e = 70e3;
+	//let u_e = 2900.0;
+	//let T_e = 1600.0;
+    //let T_wall = 300.0;
+    //let x = 0.5;  // metres
 
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
@@ -171,7 +211,6 @@ fn main() {
     let k_e = mu_e*C_p/Pr;
     let h_wall = C_p*T_wall;
 
-    let x = 2.1125;  // metres
     let xi = rho_e * u_e * mu_e * x;
 
     let pm = Parameters {
@@ -186,6 +225,7 @@ fn main() {
         mu_e: mu_e,
         u_e: u_e,
         xi: xi,
+        x: x,
         k_e: k_e,
         T_wall: T_wall,
         h_wall: h_wall,
@@ -209,8 +249,8 @@ fn main() {
         let fdd_pgd = Complex64::new(fdd, 0.0);
         let gd_pgd  = Complex64::new(gd, eps);
         let state_dgd = integrate_through_bl(fdd_pgd, gd_pgd, &pm);
-        let d_fd_dgd = (state_dgd.fd.im)/1e-16; // d_fd_dgd == df1_dq
-        let d_g_dgd = (state_dgd.g.im)/1e-16;   // d_g_dgd  == df2_dq
+        let d_fd_dgd = (state_dgd.fd.im)/eps; // d_fd_dgd == df1_dq
+        let d_g_dgd = (state_dgd.g.im)/eps;   // d_g_dgd  == df2_dq
 
         let fd_err = state_dgd.fd.re - 1.0; // f1 == fd_err
         let g_err  = state_dgd.g.re - 1.0;  // f2 == g_err
@@ -231,11 +271,17 @@ fn main() {
     }
 
     println!("Got fdd {:#?} gd {:#?}", fdd, gd);
+    let state_initial = State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
     let fdd_final = Complex64::new(fdd, 0.0);
     let gd_final = Complex64::new(gd, 0.0);
     let state_final = integrate_through_bl(fdd_final, gd_final, &pm);
 
     println!("Final state {:#?}", state_final);
+    println!("Init state {:#?}", state_initial);
+    let tauw = skin_friction(state_initial, &pm);
+    println!("Skin Friction: {:#?} N/m2", tauw);
+    let qw = heat_transfer(state_initial, &pm);
+    println!("Heat Transfer : {:#?} W/cm2", qw/100.0/100.0);
 
     //println!("Error in final values of fd= {:?} g= {:?}", state_final.fd.re-1.0,
     //                                                      state_final.g.re-1.0);
