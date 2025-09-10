@@ -1,5 +1,5 @@
 /*
-    rustbl: A compressible boundary layer analysis code.
+    bloxide: A compressible boundary layer analysis code.
 
     References:
      - "Hypersonic and High Temperature Gas Dyanmics", John D. Anderson
@@ -235,7 +235,7 @@ fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
 }
 
 fn main() {
-    println!("rustbl: A compressible boundary layer analysis code.");
+    println!("bloxide: A compressible boundary layer analysis code.");
     let mut config_file_name = "test.yaml";
     let args: Vec<String> = env::args().collect();
     if args.len()>1 { config_file_name = args[1].as_str(); }
