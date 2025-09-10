@@ -176,6 +176,16 @@ fn heat_transfer(z: State, pm: &Parameters) -> f64 {
     return qw;
 }
 
+fn boundary_layer_size(states: &Vec<State>) -> Option<f64> {
+/*
+    Use 99.9% of the freestream velocity to get the BL size.
+*/
+    for z in states {
+        if z.fd.re>0.999 { return Some(z.y.re); }
+    }
+    return None;
+}
+
 fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
 
     let mut error = 1e99;
@@ -217,7 +227,7 @@ fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
         if iterations>100 { panic!("Too many iterations of newton solve"); }
     }
 
-    println!("Got fdd {:#?} gd {:#?} in {:?} iters", fdd, gd, iterations);
+    println!("Solved fdd {:#?} gd {:#?} in {:?} iters", fdd, gd, iterations);
     let fdd_final = Complex64::new(fdd, 0.0);
     let gd_final = Complex64::new(gd, 0.0);
     let states = integrate_through_bl(fdd_final, gd_final, &pm);
@@ -232,16 +242,18 @@ fn main() {
 
     let config = read_config_file(config_file_name);
     let pm = Parameters::new(&config);
+    println!("{:#?}", config);
+
     let states = solve_boundary_layer(&pm);
     let state_initial = states[0];
     let state_final = states.last().unwrap();
 
-    println!("Final state {:#?}", state_final);
-    println!("Init state {:#?}", state_initial);
     let tauw = skin_friction(state_initial, &pm);
     println!("Skin Friction: {:#?} N/m2", tauw);
     let qw = heat_transfer(state_initial, &pm);
     println!("Heat Transfer : {:#?} W/m2", qw);
+    let ybl = boundary_layer_size(&states).expect("Cannot find bl size");
+    println!("99.9% BL size : {:#?} m", ybl);
 
     let filename = config_file_name.replace(".yaml", ".dat");
     let file = File::create(filename.as_str()).expect("Unable to open for writing");
