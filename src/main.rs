@@ -1,7 +1,10 @@
 /*
     rustbl: A compressible boundary layer analysis code.
 
-    @author: Nick Gibbons
+    References:
+     - "Hypersonic and High Temperature Gas Dyanmics", John D. Anderson
+
+    @author: Nick Gibbons and Peter Jacobs
 */
 
 #![allow(non_snake_case)]
@@ -40,17 +43,12 @@ fn rkf45_step(
     let k1 = f(t0, y0, &pm);
     let k2 = f(t0 + h/4.0, y0 + 0.25*h*k1, &pm);
     let k3 = f(t0 + 3.0*h/8.0, y0 + 3.0*h*k1/32.0 + 9.0*h*k2/32.0, &pm);
-    let k4 = f(t0 + 12.0*h/13.0, y0 + 1932.0*h*k1/2197.0 - 7200.0*h*k2/2197.0 +
-               7296.0*h*k3/2197.0, &pm);
-    let k5 = f(t0 + h, y0 + 439.0*h*k1/216.0 - 8.0*h*k2 + 3680.0*h*k3/513.0 -
-               845.0*h*k4/4104.0, &pm);
-    let k6 = f(t0 + h/2.0, y0 - 8.0*h*k1/27.0 + 2.0*h*k2 - 3544.0*h*k3/2565.0 +
-               1859.0*h*k4/4104.0 - 11.0*h*k5/40.0, &pm);
+    let k4 = f(t0 + 12.0*h/13.0, y0 + 1932.0*h*k1/2197.0 - 7200.0*h*k2/2197.0 + 7296.0*h*k3/2197.0, &pm);
+    let k5 = f(t0 + h, y0 + 439.0*h*k1/216.0 - 8.0*h*k2 + 3680.0*h*k3/513.0 - 845.0*h*k4/4104.0, &pm);
+    let k6 = f(t0 + h/2.0, y0 - 8.0*h*k1/27.0 + 2.0*h*k2 - 3544.0*h*k3/2565.0 + 1859.0*h*k4/4104.0 - 11.0*h*k5/40.0, &pm);
     // Now, do the integration as a weighting of the sampled data.
-    let y1 = y0 + 16.0*h*k1/135.0 + 6656.0*h*k3/12825.0 +
-        28561.0*h*k4/56430.0 - 9.0*h*k5/50.0 + 2.0*h*k6/55.0;
-    let err = (h*k1/360.0 - 128.0*h*k3/4275.0 - 2197.0*h*k4/75240.0 +
-               h*k5/50.0 + 2.0*h*k6/55.0).abs();
+    let y1 = y0 + 16.0*h*k1/135.0 + 6656.0*h*k3/12825.0 + 28561.0*h*k4/56430.0 - 9.0*h*k5/50.0 + 2.0*h*k6/55.0;
+    let err = (h*k1/360.0 - 128.0*h*k3/4275.0 - 2197.0*h*k4/75240.0 + h*k5/50.0 + 2.0*h*k6/55.0).abs();
     (t0+h, y1, err)
 }
 
@@ -77,9 +75,17 @@ struct Parameters {
 fn soft_max<T: ComplexFloat>(a: T, b: f64) -> T where T: Cplx<T>, f64: Mxd<T> {
     let da = a-b;
     let scale = 0.5*(a+b);
-    let eps = 1e-6*scale + 1e-12;
+    let eps = 1e-3*scale + 1e-3;
     let max = scale + 0.5*ComplexFloat::sqrt(da*da + eps*eps);
     return max;
+}
+
+fn soft_max_derivative<T: ComplexFloat>(a: T, b: f64) -> T where T: Cplx<T>, f64: Mxd<T> {
+    let da = a-b;
+    let scale = 0.5*(a+b);
+    let eps = 1e-3*scale + 1e-3;
+    let sqrtval = ComplexFloat::sqrt(da*da + eps*eps);
+    return 0.5 + 0.25/sqrtval*(2.0*da + 2.0*eps*1e-3/2.0);
 }
 
 
@@ -100,25 +106,36 @@ fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where 
 /*
     Ratio of density x viscosity product at a given point in the boundary layer
 */
-   let mut Temp = g*pm.h_e/pm.C_p; 
-   Temp = soft_max(Temp, 60.0);
-   let rho = pm.p_e/(pm.R*Temp);
-   let mu = sutherland_mu(Temp);
+   let Temp = g*pm.h_e/pm.C_p;
+   let SoftTemp = soft_max(Temp, 60.0);
+   let rho = pm.p_e/(pm.R*SoftTemp);
+   let mu = sutherland_mu(SoftTemp);
    return rho*mu/(pm.rho_e*pm.mu_e);
 }
 
+fn density_viscosity_product_derivative2<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
+   let deltag = 0.0001 * g; // something not too big, not too small
+   let C0 = density_viscosity_product(g, &pm);
+   let C1 = density_viscosity_product(g+deltag, &pm);
+   let dCdg = (C1-C0)/deltag;
+   return dCdg;
+}
+
 fn density_viscosity_product_derivative<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
-   let mut Temp = g*pm.h_e/pm.C_p; 
-   Temp = soft_max(Temp, 60.0);
-   let rho = pm.p_e/(pm.R*Temp);
-   let mu = sutherland_mu(Temp);
+   let Temp = g*pm.h_e/pm.C_p;
+   let SoftTemp = soft_max(Temp, 60.0);
+   let rho = pm.p_e/(pm.R*SoftTemp);
+   let mu = sutherland_mu(SoftTemp);
 
-   let dmudT = sutherland_mu_derivative(Temp);
-   let drhodT = -pm.p_e/pm.R/Temp/Temp;
    let dTdg = pm.h_e/pm.C_p;
-
-   let drhodg = drhodT*dTdg;
+   let dSTdT = soft_max_derivative(Temp, 60.0);
+   let dmudST = sutherland_mu_derivative(SoftTemp);
+   let dmudT = dmudST*dSTdT;
    let dmudg  = dmudT*dTdg;
+
+   let drhodST = -pm.p_e/pm.R/SoftTemp/SoftTemp;
+   let drhodT = drhodST*dSTdT;
+   let drhodg = drhodT*dTdg;
 
    return (rho*dmudg + mu*drhodg)/(pm.rho_e*pm.mu_e);
 }
@@ -135,11 +152,12 @@ fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
     let gdd = pm.Pr/C*(-gd*(Cd/pm.Pr+f) - C*pm.u_e*pm.u_e/pm.h_e*fdd*fdd);
     let yd = f64::sqrt(2.0*pm.xi)/pm.u_e*pm.h_e/pm.p_e*(pm.gamma-1.0)/pm.gamma*g;
     let dzdeta = State {f: fd, fd: fdd, fdd: fddd, g: gd, gd: gdd, y: yd};
+    //println!("        Called ODE: g {:#} dCdg {:#} dCdg2 {:#}", g.re, dCdg.re, dCdg2.re);
 
     return dzdeta;
 }
 
-const NSTEPS: usize = 1000;
+const NSTEPS: usize = 500;
 fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> Vec<State> {
     let f  = Complex64::new(0.0,0.0);
     let fd = Complex64::new(0.0,0.0);
@@ -155,9 +173,11 @@ fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> Vec<S
 
     for step in 0 .. NSTEPS {
         let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
-        //println!("    step {:?}: [{:?},{:?},{:?},{:?},{:?},{:?}] ", step, z0.f.re, z0.fd.re, z0.fdd.re, z0.g.re, z0.gd.re, z0.y.re);
-        //println!("    step {:?}: [fd={:?} g={:?} y={:?}] ", step, z0.fd.re, z0.g.re, z0.y.re);
         eta0 = eta1; z0 = z1;
+        //let hi = z0.g.re*pm.h_e; let Ti = hi / pm.C_p;
+        //let softTi = soft_max(Ti, 60.0);
+        //println!("    step {:?}: [{:?},{:?},{:?},{:?},{:?},{:?}] T: {:?} ({:?})", step, z0.f.re, z0.fd.re, z0.fdd.re, z0.g.re, z0.gd.re, z0.y.re, Ti, softTi);
+        //println!("           im: [{:?},{:?},{:?},{:?},{:?},{:?}] ", z0.f.im, z0.fd.im, z0.fdd.im, z0.g.im, z0.gd.im, z0.y.im);
         zs.push(z0.clone())
     }
 
@@ -178,7 +198,7 @@ fn skin_friction(z: State, pm: &Parameters) -> f64 {
 
 fn heat_transfer(z: State, pm: &Parameters) -> f64 {
 /*
-    Return q, using equations 6.79 and ??? from Anderson. Dodgy????
+    Return q, using equations 6.79 and ??? from Anderson.
 */
     let rhomuw_on_rhomue = density_viscosity_product(z.g.re, &pm);
     let gdw = z.gd.re;
@@ -196,11 +216,18 @@ fn main() {
     let Pr = 0.71;
 
     // Nominal CFD conditions
-	let p_e = 2.303e3;
-	let u_e = 604.5;
-	let T_e = 108.1;
+    let p_e = 2.303e3;
+    let u_e = 604.5;
+    let T_e = 108.1;
     let T_wall = 269.5;
     let x = 0.5;  // metres
+
+    // Scramjet candidate condition
+    //let p_e = 70e3;
+    //let u_e = 3000.0;
+    //let T_e = 2400.0;
+    //let T_wall = 300.0;
+    //let x = 0.5;  // metres
 
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
@@ -257,15 +284,14 @@ fn main() {
         let g_err  = state_dgd.g.re - 1.0;  // f2 == g_err
         error = f64::sqrt(fd_err*fd_err + g_err*g_err);
 
+        // Two equation Newton's Method has a 2x2 jacobian that can be
+        // inverted analytically. Do this here to get fdd and gd corrections.
         let diff_fdd = (fd_err*d_g_dgd/d_fd_dgd - g_err)
                       /(d_g_dfdd - d_g_dgd*d_fd_dfdd/d_fd_dgd);
         let diff_gd  = (fd_err*d_g_dfdd/d_fd_dfdd - g_err)
                       /(d_g_dgd - d_g_dfdd*d_fd_dgd/d_fd_dfdd);
         fdd += diff_fdd;
         gd  += diff_gd;
-        //println!(" iter {:?} err {:?} state_final= {:#?}", iterations, error, state_dgd);
-        //println!(" fdd {:#?} change ({:#?}) gd {:#?} change ({:#?})", fdd, diff_fdd, gd, diff_gd);
-        //println!(" fd_err {:#?} g_err {:#?}", fd_err, g_err);
 
         iterations += 1;
         if iterations>100 { panic!("Too many iterations of newton solve"); }
