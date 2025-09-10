@@ -21,9 +21,13 @@ extern crate yaml_rust;
 
 pub mod state;
 pub mod config;
+pub mod viscosity;
+pub mod parameters;
 pub mod mixedarithmetic;
 use crate::state::State;
-use crate::config::read_config_file;
+use crate::config::{read_config_file};
+use crate::viscosity::{sutherland_mu, sutherland_mu_derivative};
+use crate::parameters::{Parameters};
 use crate::mixedarithmetic::{Cplx,Mxd};
 
 
@@ -48,24 +52,7 @@ fn rkf45_step(
 }
 
 
-#[derive(Clone, Copy)]
-struct Parameters {
-    R: f64,
-    gamma: f64,
-    C_p: f64,
-    Pr: f64,
-    p_e: f64,
-    T_e: f64,
-    rho_e: f64,
-    h_e: f64,
-    mu_e: f64,
-    u_e: f64,
-    k_e: f64,
-    xi: f64,
-    x: f64,
-    T_wall: f64,
-    h_wall: f64,
-}
+
 
 fn soft_max<T: ComplexFloat>(a: T, b: f64) -> T where T: Cplx<T>, f64: Mxd<T> {
     let da = a-b;
@@ -83,19 +70,6 @@ fn soft_max_derivative<T: ComplexFloat>(a: T, b: f64) -> T where T: Cplx<T>, f64
     return 0.5 + 0.25/sqrtval*(2.0*da + 2.0*eps*1e-3/2.0);
 }
 
-
-const MU_REF: f64 = 1.716e-05;
-const T_REF: f64 = 273.0;
-const S: f64 = 111.0;
-
-// T here is a generic type, not the temperature!
-fn sutherland_mu<T: ComplexFloat>(TEMP: T) -> T where T: Cplx<T>, f64: Mxd<T> {
-    return MU_REF*ComplexFloat::sqrt(TEMP/T_REF)*(TEMP/T_REF)*(T_REF + S)/(TEMP + S);
-}
-
-fn sutherland_mu_derivative<T: ComplexFloat>(TEMP: T) -> T where T: Cplx<T>, f64: Mxd<T> {
-    return MU_REF*(T_REF+S)*ComplexFloat::sqrt(TEMP/T_REF)*(3.0*S+TEMP)/(2.0*T_REF*(S+TEMP)*(S+TEMP));
-}
 
 fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
 /*
@@ -202,52 +176,7 @@ fn heat_transfer(z: State, pm: &Parameters) -> f64 {
     return qw;
 }
 
-
-fn main() {
-    println!("rustbl: A compressible boundary layer analysis code.");
-    let mut config_file_name = "test.yaml";
-    let args: Vec<String> = env::args().collect();
-    if args.len()>1 { config_file_name = args[1].as_str(); }
-
-    let config = read_config_file(config_file_name);
-    let R     = config.R;
-    let gamma = config.gamma;
-    let Pr = config.Pr;
-
-    let p_e = config.p_e;
-    let u_e = config.u_e;
-    let T_e = config.T_e;
-    let T_wall = config.T_wall;
-    let x = config.x;  // metres
-
-    let C_p = gamma/(gamma-1.0)*R;
-    let h_e = C_p*T_e;
-    let rho_e = p_e/(R*T_e);
-    let mu_e = sutherland_mu(T_e);
-
-    let k_e = mu_e*C_p/Pr;
-    let h_wall = C_p*T_wall;
-
-    let xi = rho_e * u_e * mu_e * x;
-
-    let pm = Parameters {
-        R: R,
-        gamma: gamma,
-        Pr: Pr,
-        C_p: C_p,
-        p_e: p_e,
-        T_e: T_e,
-        rho_e: rho_e,
-        h_e: h_e,
-        mu_e: mu_e,
-        u_e: u_e,
-        xi: xi,
-        x: x,
-        k_e: k_e,
-        T_wall: T_wall,
-        h_wall: h_wall,
-    };
-
+fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
 
     let mut error = 1e99;
     let tol = 1e-10;
@@ -289,10 +218,22 @@ fn main() {
     }
 
     println!("Got fdd {:#?} gd {:#?} in {:?} iters", fdd, gd, iterations);
-    let state_initial = State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
     let fdd_final = Complex64::new(fdd, 0.0);
     let gd_final = Complex64::new(gd, 0.0);
     let states = integrate_through_bl(fdd_final, gd_final, &pm);
+    return states;
+}
+
+fn main() {
+    println!("rustbl: A compressible boundary layer analysis code.");
+    let mut config_file_name = "test.yaml";
+    let args: Vec<String> = env::args().collect();
+    if args.len()>1 { config_file_name = args[1].as_str(); }
+
+    let config = read_config_file(config_file_name);
+    let pm = Parameters::new(&config);
+    let states = solve_boundary_layer(&pm);
+    let state_initial = states[0];
     let state_final = states.last().unwrap();
 
     println!("Final state {:#?}", state_final);
