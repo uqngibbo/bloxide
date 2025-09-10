@@ -247,11 +247,11 @@ fn heat_transfer(z: State, pm: &Parameters) -> f64 {
 
 fn main() {
     println!("rustbl: A compressible boundary layer analysis code.");
-    let mut filename = "test.yaml";
+    let mut config_file_name = "test.yaml";
     let args: Vec<String> = env::args().collect();
-    if args.len()>1 { filename = args[1].as_str(); }
+    if args.len()>1 { config_file_name = args[1].as_str(); }
 
-    let config = read_config_file(filename);
+    let config = read_config_file(config_file_name);
     let R     = config.R;
     let gamma = config.gamma;
     let Pr = config.Pr;
@@ -344,14 +344,8 @@ fn main() {
     let qw = heat_transfer(state_initial, &pm);
     println!("Heat Transfer : {:#?} W/m2", qw);
 
-    //println!("Error in final values of fd= {:?} g= {:?}", state_final.fd.re-1.0,
-    //                                                      state_final.g.re-1.0);
-    //println!("d_g_dfdd:  {:#?}", d_g_dfdd);
-    //println!("d_fd_dfdd: {:#?}", d_fd_dfdd);
-    //println!("d_g_dgd:   {:#?}", d_g_dgd);
-    //println!("d_fd_dgd:  {:#?}", d_fd_dgd);
-
-    let file = File::create("solution.dat").expect("Unable to open file");
+    let filename = config_file_name.replace(".yaml", ".dat");
+    let file = File::create(filename.as_str()).expect("Unable to open for writing");
     let mut buf =  BufWriter::new(file);
     buf.write(b"# y vel T rho p\n").expect("Unable to write to file");
 
