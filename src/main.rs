@@ -11,7 +11,8 @@
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
 use std::ops::{Add,Mul,Div,Sub};
-
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 pub mod state;
 use crate::state::State;
@@ -100,7 +101,7 @@ fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where 
     Ratio of density x viscosity product at a given point in the boundary layer
 */
    let mut Temp = g*pm.h_e/pm.C_p; 
-   Temp = soft_max(Temp, 100.0);
+   Temp = soft_max(Temp, 60.0);
    let rho = pm.p_e/(pm.R*Temp);
    let mu = sutherland_mu(Temp);
    return rho*mu/(pm.rho_e*pm.mu_e);
@@ -108,7 +109,7 @@ fn density_viscosity_product<T: ComplexFloat>(g: T, pm: &Parameters) -> T where 
 
 fn density_viscosity_product_derivative<T: ComplexFloat>(g: T, pm: &Parameters) -> T where T: Cplx<T>, f64: Mxd<T> {
    let mut Temp = g*pm.h_e/pm.C_p; 
-   Temp = soft_max(Temp, 100.0);
+   Temp = soft_max(Temp, 60.0);
    let rho = pm.p_e/(pm.R*Temp);
    let mu = sutherland_mu(Temp);
 
@@ -138,26 +139,29 @@ fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
     return dzdeta;
 }
 
-fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> State {
+const NSTEPS: usize = 1000;
+fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> Vec<State> {
     let f  = Complex64::new(0.0,0.0);
     let fd = Complex64::new(0.0,0.0);
     let g = Complex64::new(pm.h_wall/pm.h_e, 0.0);
     let y = Complex64::new(0.0, 0.0);
 
     let mut eta0 = 0.0;
-    let nsteps = 500;
     let eta_final = 5.0;
-    let deta = (eta_final-eta0)/(nsteps as f64);
+    let deta = (eta_final-eta0)/(NSTEPS as f64);
     let mut z0 = State {f: f, fd: fd, fdd: fdd, g: g, gd: gd, y: y};
+    let mut zs = Vec::with_capacity(NSTEPS+1);
+    zs.push(z0.clone());
 
-    for step in 0 .. nsteps {
+    for step in 0 .. NSTEPS {
         let (eta1, z1, _err) = rkf45_step(self_similar_ode, eta0, deta, z0, &pm);
         //println!("    step {:?}: [{:?},{:?},{:?},{:?},{:?},{:?}] ", step, z0.f.re, z0.fd.re, z0.fdd.re, z0.g.re, z0.gd.re, z0.y.re);
         //println!("    step {:?}: [fd={:?} g={:?} y={:?}] ", step, z0.fd.re, z0.g.re, z0.y.re);
         eta0 = eta1; z0 = z1;
+        zs.push(z0.clone())
     }
 
-    return z0;
+    return zs;
 }
 
 fn skin_friction(z: State, pm: &Parameters) -> f64 {
@@ -176,10 +180,10 @@ fn heat_transfer(z: State, pm: &Parameters) -> f64 {
 /*
     Return q, using equations 6.79 and ??? from Anderson. Dodgy????
 */
-    let rhomuw_on_mue = density_viscosity_product(z.g.re, &pm)*pm.rho_e;
+    let rhomuw_on_rhomue = density_viscosity_product(z.g.re, &pm);
     let gdw = z.gd.re;
     let Rex = pm.rho_e*pm.u_e/pm.mu_e*pm.x;
-    let qw = pm.u_e/f64::sqrt(2.0)*rhomuw_on_mue/pm.Pr*pm.h_e*gdw/f64::sqrt(Rex);
+    let qw = pm.u_e*pm.rho_e/f64::sqrt(2.0)/pm.Pr*rhomuw_on_rhomue*pm.h_e*gdw/f64::sqrt(Rex);
     return qw;
 }
 
@@ -191,17 +195,12 @@ fn main() {
 	let gamma = 1.4;
     let Pr = 0.71;
 
+    // Nominal CFD conditions
 	let p_e = 2.303e3;
 	let u_e = 604.5;
 	let T_e = 108.1;
-    let T_wall = 307.0;
-    let x = 2.1125;  // metres
-
-	//let p_e = 70e3;
-	//let u_e = 2900.0;
-	//let T_e = 1600.0;
-    //let T_wall = 300.0;
-    //let x = 0.5;  // metres
+    let T_wall = 269.5;
+    let x = 0.5;  // metres
 
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
@@ -233,7 +232,7 @@ fn main() {
 
 
     let mut error = 1e99;
-    let tol = 1e-6;
+    let tol = 1e-10;
     let mut iterations = 0;
     let mut fdd = 0.5;
     let mut gd  = 1.0;
@@ -242,13 +241,15 @@ fn main() {
         let eps = 1e-16;
         let fdd_pfdd= Complex64::new(fdd, eps);
         let gd_pfdd = Complex64::new(gd, 0.0);
-        let state_dfdd= integrate_through_bl(fdd_pfdd, gd_pfdd, &pm);
+        let states_dfdd= integrate_through_bl(fdd_pfdd, gd_pfdd, &pm);
+        let state_dfdd= states_dfdd.last().unwrap();
         let d_fd_dfdd = (state_dfdd.fd.im)/eps; // d_fd_dfdd == df1_dtau
         let d_g_dfdd = (state_dfdd.g.im)/eps;   // d_g_dfdd  == df2_dtau
 
         let fdd_pgd = Complex64::new(fdd, 0.0);
         let gd_pgd  = Complex64::new(gd, eps);
-        let state_dgd = integrate_through_bl(fdd_pgd, gd_pgd, &pm);
+        let states_dgd = integrate_through_bl(fdd_pgd, gd_pgd, &pm);
+        let state_dgd = states_dgd.last().unwrap();
         let d_fd_dgd = (state_dgd.fd.im)/eps; // d_fd_dgd == df1_dq
         let d_g_dgd = (state_dgd.g.im)/eps;   // d_g_dgd  == df2_dq
 
@@ -270,18 +271,19 @@ fn main() {
         if iterations>100 { panic!("Too many iterations of newton solve"); }
     }
 
-    println!("Got fdd {:#?} gd {:#?}", fdd, gd);
+    println!("Got fdd {:#?} gd {:#?} in {:?} iters", fdd, gd, iterations);
     let state_initial = State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
     let fdd_final = Complex64::new(fdd, 0.0);
     let gd_final = Complex64::new(gd, 0.0);
-    let state_final = integrate_through_bl(fdd_final, gd_final, &pm);
+    let states = integrate_through_bl(fdd_final, gd_final, &pm);
+    let state_final = states.last().unwrap();
 
     println!("Final state {:#?}", state_final);
     println!("Init state {:#?}", state_initial);
     let tauw = skin_friction(state_initial, &pm);
     println!("Skin Friction: {:#?} N/m2", tauw);
     let qw = heat_transfer(state_initial, &pm);
-    println!("Heat Transfer : {:#?} W/cm2", qw/100.0/100.0);
+    println!("Heat Transfer : {:#?} W/m2", qw);
 
     //println!("Error in final values of fd= {:?} g= {:?}", state_final.fd.re-1.0,
     //                                                      state_final.g.re-1.0);
@@ -289,6 +291,18 @@ fn main() {
     //println!("d_fd_dfdd: {:#?}", d_fd_dfdd);
     //println!("d_g_dgd:   {:#?}", d_g_dgd);
     //println!("d_fd_dgd:  {:#?}", d_fd_dgd);
+
+    let file = File::create("solution.dat").expect("Unable to open file");
+    let mut buf =  BufWriter::new(file);
+    buf.write(b"# y vel T rho p\n").expect("Unable to write to file");
+
+    for i in 0 .. NSTEPS+1 {
+        let zi = states[i];
+        let h = zi.g.re*pm.h_e; let T = h / pm.C_p; let rho = pm.p_e/(pm.R*T);
+        let u = zi.fd.re*pm.u_e; let y = zi.y.re; let p = pm.p_e;
+
+        write!(buf, "{:16.16e} {:16.16e} {:16.16e} {:16.16e} {:16.16e}\n", y, u, T, rho, p).expect("Unable to write line to file");
+    }
 
     println!("Done.");
 }

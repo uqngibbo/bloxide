@@ -229,6 +229,19 @@ impl State{
 }
 
 impl State{
+    pub fn clone(self) -> Self {
+        Self {
+            f:   Complex64::new(self.f.re,   self.f.im),
+            fd:  Complex64::new(self.fd.re,  self.fd.im),
+            fdd: Complex64::new(self.fdd.re, self.fdd.im),
+            g:   Complex64::new(self.g.re,   self.g.im),
+            gd:  Complex64::new(self.gd.re,  self.gd.im),
+            y:   Complex64::new(self.y.re,   self.y.im),
+        }
+    }
+}
+
+impl State{
     pub fn wall_state(fdd: f64, gd: f64, h_wall: f64, h_e: f64 ) -> Self {
         Self {
             f:   Complex64::new(0.0, 0.0),
