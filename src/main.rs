@@ -16,6 +16,11 @@ use num_complex::ComplexFloat;
 use std::ops::{Add,Mul,Div,Sub};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::io::prelude::*;
+use std::env;
+
+extern crate yaml_rust;
+use yaml_rust::{YamlLoader};
 
 pub mod state;
 use crate::state::State;
@@ -31,6 +36,38 @@ trait Mxd<T>:    Mul<T,Output = T>   + Add<T,   Output = T>   + Div<T,   Output 
 impl<T> Mxd<T> for f64 where f64: Mul<T, Output = T>   + Add<T, Output = T>   + Div<T, Output = T>   + Sub<T, Output = T>
                                 + Mul<f64, Output = f64> + Add<f64, Output = f64> + Div<f64, Output = f64> + Sub<f64, Output = f64> {}
 
+#[derive(Debug)]
+struct Config {
+    R: f64,
+    gamma: f64,
+    Pr: f64,
+    p_e: f64,
+    u_e: f64,
+    T_e: f64,
+    T_wall: f64,
+    x: f64,
+}
+
+fn read_config_file(filename: &str) -> Config {
+    let mut f = File::open(filename).expect(format!("Unable to open yaml file {}", filename).as_str());
+    let mut buffer = String::new();
+    f.read_to_string(&mut buffer).expect("Unable to parse file to string");
+
+    let pages = YamlLoader::load_from_str(buffer.as_str()).unwrap();
+    let cfg = &pages[0];
+
+    let config = Config {
+        R:      cfg["R"].as_f64().unwrap(),
+        gamma:  cfg["gamma"].as_f64().unwrap(),
+        Pr:     cfg["Pr"].as_f64().unwrap(),
+        p_e:    cfg["p_e"].as_f64().unwrap(),
+        u_e:    cfg["u_e"].as_f64().unwrap(),
+        T_e:    cfg["T_e"].as_f64().unwrap(),
+        T_wall: cfg["T_wall"].as_f64().unwrap(),
+        x:      cfg["x"].as_f64().unwrap(),
+    };
+    return config
+}
 
 fn rkf45_step(
     f : fn(f64, State, &Parameters) -> State,
@@ -139,7 +176,7 @@ fn density_viscosity_product_derivative<T: ComplexFloat>(g: T, pm: &Parameters) 
 
    return (rho*dmudg + mu*drhodg)/(pm.rho_e*pm.mu_e);
 }
-    
+
 fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
     let f = z.f; let fd = z.fd; let fdd = z.fdd;
     let g = z.g; let gd = z.gd; let y   = z.y;
@@ -210,24 +247,20 @@ fn heat_transfer(z: State, pm: &Parameters) -> f64 {
 
 fn main() {
     println!("rustbl: A compressible boundary layer analysis code.");
+    let mut filename = "test.yaml";
+    let args: Vec<String> = env::args().collect();
+    if args.len()>1 { filename = args[1].as_str(); }
 
-	let R     = 287.1;
-	let gamma = 1.4;
-    let Pr = 0.71;
+    let config = read_config_file(filename);
+    let R     = config.R;
+    let gamma = config.gamma;
+    let Pr = config.Pr;
 
-    // Nominal CFD conditions
-    let p_e = 2.303e3;
-    let u_e = 604.5;
-    let T_e = 108.1;
-    let T_wall = 269.5;
-    let x = 0.5;  // metres
-
-    // Scramjet candidate condition
-    //let p_e = 70e3;
-    //let u_e = 3000.0;
-    //let T_e = 2400.0;
-    //let T_wall = 300.0;
-    //let x = 0.5;  // metres
+    let p_e = config.p_e;
+    let u_e = config.u_e;
+    let T_e = config.T_e;
+    let T_wall = config.T_wall;
+    let x = config.x;  // metres
 
 	let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
