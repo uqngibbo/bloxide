@@ -262,7 +262,7 @@ fn main() {
     let T_wall = config.T_wall;
     let x = config.x;  // metres
 
-	let C_p = gamma/(gamma-1.0)*R;
+    let C_p = gamma/(gamma-1.0)*R;
     let h_e = C_p*T_e;
     let rho_e = p_e/(R*T_e);
     let mu_e = sutherland_mu(T_e);
@@ -288,7 +288,7 @@ fn main() {
         k_e: k_e,
         T_wall: T_wall,
         h_wall: h_wall,
-	};
+    };
 
 
     let mut error = 1e99;
