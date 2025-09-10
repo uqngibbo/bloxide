@@ -13,61 +13,19 @@
 
 use num_complex::Complex64;
 use num_complex::ComplexFloat;
-use std::ops::{Add,Mul,Div,Sub};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::io::prelude::*;
 use std::env;
 
 extern crate yaml_rust;
-use yaml_rust::{YamlLoader};
 
 pub mod state;
+pub mod config;
+pub mod mixedarithmetic;
 use crate::state::State;
+use crate::config::read_config_file;
+use crate::mixedarithmetic::{Cplx,Mxd};
 
-
-// Super traits to allow mixed complex/real arithmetic
-trait Cplx<T>: Mul<f64, Output = T> + Add<f64, Output = T>   + Div<f64, Output = T>   + Sub<f64, Output = T> {}
-impl<T> Cplx<T> for T where T: Mul<f64, Output = T>   + Add<f64, Output = T>   + Div<f64, Output = T>   + Sub<f64, Output = T> {}
-
-
-trait Mxd<T>:    Mul<T,Output = T>   + Add<T,   Output = T>   + Div<T,   Output = T>   + Sub<T,   Output = T>
-               + Mul<f64, Output = f64> + Add<f64, Output = f64> + Div<f64, Output = f64> + Sub<f64, Output = f64> {}
-impl<T> Mxd<T> for f64 where f64: Mul<T, Output = T>   + Add<T, Output = T>   + Div<T, Output = T>   + Sub<T, Output = T>
-                                + Mul<f64, Output = f64> + Add<f64, Output = f64> + Div<f64, Output = f64> + Sub<f64, Output = f64> {}
-
-#[derive(Debug)]
-struct Config {
-    R: f64,
-    gamma: f64,
-    Pr: f64,
-    p_e: f64,
-    u_e: f64,
-    T_e: f64,
-    T_wall: f64,
-    x: f64,
-}
-
-fn read_config_file(filename: &str) -> Config {
-    let mut f = File::open(filename).expect(format!("Unable to open yaml file {}", filename).as_str());
-    let mut buffer = String::new();
-    f.read_to_string(&mut buffer).expect("Unable to parse file to string");
-
-    let pages = YamlLoader::load_from_str(buffer.as_str()).unwrap();
-    let cfg = &pages[0];
-
-    let config = Config {
-        R:      cfg["R"].as_f64().unwrap(),
-        gamma:  cfg["gamma"].as_f64().unwrap(),
-        Pr:     cfg["Pr"].as_f64().unwrap(),
-        p_e:    cfg["p_e"].as_f64().unwrap(),
-        u_e:    cfg["u_e"].as_f64().unwrap(),
-        T_e:    cfg["T_e"].as_f64().unwrap(),
-        T_wall: cfg["T_wall"].as_f64().unwrap(),
-        x:      cfg["x"].as_f64().unwrap(),
-    };
-    return config
-}
 
 fn rkf45_step(
     f : fn(f64, State, &Parameters) -> State,
