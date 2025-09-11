@@ -234,6 +234,19 @@ fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
     return states;
 }
 
+fn write_dat_file(states: Vec<State>, filename: &str, pm: &Parameters) {
+    let file = File::create(filename).expect("Unable to open for writing");
+    let mut buf =  BufWriter::new(file);
+    buf.write(b"# y vel T rho p\n").expect("Unable to write to file");
+
+    for zi in states {
+        let h = zi.g.re*pm.h_e; let T = h / pm.C_p; let rho = pm.p_e/(pm.R*T);
+        let u = zi.fd.re*pm.u_e; let y = zi.y.re; let p = pm.p_e;
+
+        write!(buf, "{:16.16e} {:16.16e} {:16.16e} {:16.16e} {:16.16e}\n", y, u, T, rho, p).expect("Unable to write line to file");
+    }
+}
+
 fn main() {
     println!("bloxide: A compressible boundary layer analysis code.");
     let mut config_file_name = "test.yaml";
@@ -256,17 +269,7 @@ fn main() {
     println!("99.9% BL size : {:#?} m", ybl);
 
     let filename = config_file_name.replace(".yaml", ".dat");
-    let file = File::create(filename.as_str()).expect("Unable to open for writing");
-    let mut buf =  BufWriter::new(file);
-    buf.write(b"# y vel T rho p\n").expect("Unable to write to file");
-
-    for i in 0 .. NSTEPS+1 {
-        let zi = states[i];
-        let h = zi.g.re*pm.h_e; let T = h / pm.C_p; let rho = pm.p_e/(pm.R*T);
-        let u = zi.fd.re*pm.u_e; let y = zi.y.re; let p = pm.p_e;
-
-        write!(buf, "{:16.16e} {:16.16e} {:16.16e} {:16.16e} {:16.16e}\n", y, u, T, rho, p).expect("Unable to write line to file");
-    }
+    write_dat_file(states, filename.as_str(), &pm);
 
     println!("Done.");
 }
