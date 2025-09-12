@@ -227,6 +227,53 @@ pub fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
     return states;
 }
 
+pub fn solve_adiabatic_boundary_layer(pm: &Parameters) -> Vec<State> {
+
+    let mut error = 1e99;
+    let tol = 1e-10;
+    let mut iterations = 0;
+    let mut fdd = 0.5;
+    let mut g   = 1.0;
+    let eps = 1e-16;
+
+    while error>tol {
+        let mut state_pfdd = State::adiabatic_wall_state(fdd, g);
+        state_pfdd.fdd.im = eps;
+        let states_dfdd= integrate_through_bl(state_pfdd, &pm);
+        let state_dfdd= states_dfdd.last().unwrap();
+        let d_fd_dfdd = (state_dfdd.fd.im)/eps;
+        let d_g_dfdd = (state_dfdd.g.im)/eps;
+
+        let mut state_pg = State::adiabatic_wall_state(fdd, g);
+        state_pg.g.im = eps;
+        let states_dg = integrate_through_bl(state_pg, &pm);
+        let state_dg = states_dg.last().unwrap();
+        let d_fd_dg = (state_dg.fd.im)/eps;
+        let d_g_dg = (state_dg.g.im)/eps;
+
+        let fd_err = state_dg.fd.re - 1.0; // f1 == fd_err
+        let g_err  = state_dg.g.re - 1.0;  // f2 == g_err
+        error = f64::sqrt(fd_err*fd_err + g_err*g_err);
+
+        // Two equation Newton's Method has a 2x2 jacobian that can be
+        // inverted analytically. Do this here to get fdd and g corrections.
+        let diff_fdd = (fd_err*d_g_dg/d_fd_dg - g_err)
+                      /(d_g_dfdd - d_g_dg*d_fd_dfdd/d_fd_dg);
+        let diff_g  = (fd_err*d_g_dfdd/d_fd_dfdd - g_err)
+                      /(d_g_dg - d_g_dfdd*d_fd_dg/d_fd_dfdd);
+        fdd += diff_fdd;
+        g  += diff_g;
+
+        iterations += 1;
+        if iterations>100 { panic!("Too many iterations of newton solve"); }
+    }
+
+    println!("Solved fdd {:#?} g {:#?} in {:?} iters", fdd, g, iterations);
+    let wall_state_final =  State::adiabatic_wall_state(fdd, g);
+    let states = integrate_through_bl(wall_state_final, &pm);
+    return states;
+}
+
 pub fn write_dat_file(states: Vec<State>, filename: &str, pm: &Parameters) {
     let file = File::create(filename).expect("Unable to open for writing");
     let mut buf =  BufWriter::new(file);

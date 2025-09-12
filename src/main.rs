@@ -15,7 +15,7 @@ use std::env;
 
 use bloxide::config::{read_config_file};
 use bloxide::parameters::{Parameters};
-use bloxide::{solve_boundary_layer, skin_friction, heat_transfer, boundary_layer_size, write_dat_file, reynolds_number};
+use bloxide::{solve_boundary_layer, skin_friction, heat_transfer, boundary_layer_size, write_dat_file, reynolds_number, solve_adiabatic_boundary_layer};
 
 fn main() {
     println!("bloxide: A compressible boundary layer analysis code.");
@@ -41,6 +41,12 @@ fn main() {
     println!("Heat Transfer : {:5.5} W/cm2", qw/1e4);
     println!("99.9% BL size : {:5.5} mm", ybl*1000.0);
     println!("Rex: {:5.5} million   Ret: {:5.5}", Rex/1e6, Ret);
+
+    let adiabatic_states = solve_adiabatic_boundary_layer(&pm);
+    let adiabatic_state_initial = adiabatic_states[0];
+    let hwall = adiabatic_state_initial.g.re*pm.h_e;
+    let Twall = hwall / pm.C_p;
+    println!("Adiabatic Wall Temp: {:5.5} K", Twall);
 
     let filename = config_file_name.replace(".yaml", ".dat");
     write_dat_file(states, filename.as_str(), &pm);

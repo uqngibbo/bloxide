@@ -254,3 +254,16 @@ impl State{
     }
 }
 
+impl State{
+    pub fn adiabatic_wall_state(fdd: f64, g: f64) -> Self {
+        Self {
+            f:   Complex64::new(0.0, 0.0),
+            fd:  Complex64::new(0.0, 0.0),
+            fdd: Complex64::new(fdd, 0.0),
+            g:   Complex64::new(g, 0.0),
+            gd:  Complex64::new(0.0, 0.0),
+            y:   Complex64::new(0.0, 0.0),
+        }
+    }
+}
+
