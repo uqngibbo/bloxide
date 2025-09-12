@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use num_complex::Complex64;
+//use num_complex::Complex64;
 use num_complex::ComplexFloat;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -122,16 +122,11 @@ pub fn self_similar_ode(_t: f64, z: State, pm: &Parameters) -> State {
 }
 
 const NSTEPS: usize = 500;
-pub fn integrate_through_bl(fdd: Complex64, gd: Complex64, pm: &Parameters) -> Vec<State> {
-    let f  = Complex64::new(0.0,0.0);
-    let fd = Complex64::new(0.0,0.0);
-    let g = Complex64::new(pm.h_wall/pm.h_e, 0.0);
-    let y = Complex64::new(0.0, 0.0);
-
+pub fn integrate_through_bl(state0: State, pm: &Parameters) -> Vec<State> {
     let mut eta0 = 0.0;
     let eta_final = 5.0;
     let deta = (eta_final-eta0)/(NSTEPS as f64);
-    let mut z0 = State {f: f, fd: fd, fdd: fdd, g: g, gd: gd, y: y};
+    let mut z0 = state0.clone();
     let mut zs = Vec::with_capacity(NSTEPS+1);
     zs.push(z0.clone());
 
@@ -192,19 +187,19 @@ pub fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
     let mut iterations = 0;
     let mut fdd = 0.5;
     let mut gd  = 1.0;
+    let eps = 1e-16;
 
     while error>tol {
-        let eps = 1e-16;
-        let fdd_pfdd= Complex64::new(fdd, eps);
-        let gd_pfdd = Complex64::new(gd, 0.0);
-        let states_dfdd= integrate_through_bl(fdd_pfdd, gd_pfdd, &pm);
+        let mut state_pfdd = State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
+        state_pfdd.fdd.im = eps;
+        let states_dfdd= integrate_through_bl(state_pfdd, &pm);
         let state_dfdd= states_dfdd.last().unwrap();
         let d_fd_dfdd = (state_dfdd.fd.im)/eps; // d_fd_dfdd == df1_dtau
         let d_g_dfdd = (state_dfdd.g.im)/eps;   // d_g_dfdd  == df2_dtau
 
-        let fdd_pgd = Complex64::new(fdd, 0.0);
-        let gd_pgd  = Complex64::new(gd, eps);
-        let states_dgd = integrate_through_bl(fdd_pgd, gd_pgd, &pm);
+        let mut state_pgd = State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
+        state_pgd.gd.im = eps;
+        let states_dgd = integrate_through_bl(state_pgd, &pm);
         let state_dgd = states_dgd.last().unwrap();
         let d_fd_dgd = (state_dgd.fd.im)/eps; // d_fd_dgd == df1_dq
         let d_g_dgd = (state_dgd.g.im)/eps;   // d_g_dgd  == df2_dq
@@ -227,9 +222,8 @@ pub fn solve_boundary_layer(pm: &Parameters) -> Vec<State> {
     }
 
     println!("Solved fdd {:#?} gd {:#?} in {:?} iters", fdd, gd, iterations);
-    let fdd_final = Complex64::new(fdd, 0.0);
-    let gd_final = Complex64::new(gd, 0.0);
-    let states = integrate_through_bl(fdd_final, gd_final, &pm);
+    let wall_state_final =  State::wall_state(fdd, gd, pm.h_wall, pm.h_e);
+    let states = integrate_through_bl(wall_state_final, &pm);
     return states;
 }
 
