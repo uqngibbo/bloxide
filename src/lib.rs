@@ -245,3 +245,9 @@ pub fn write_dat_file(states: Vec<State>, filename: &str, pm: &Parameters) {
         write!(buf, "{:16.16e} {:16.16e} {:16.16e} {:16.16e} {:16.16e}\n", y, u, T, rho, p).expect("Unable to write line to file");
     }
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn get_heat_transfer(x: f64) -> f64 {
+    let ht = 1.65*x;
+    return ht;
+}
