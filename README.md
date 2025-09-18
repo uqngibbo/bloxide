@@ -44,7 +44,7 @@ This should output some details about the boundary layer as well as a file calle
     Done.
 
 ## Author:
-Nick Gibbons (n.gibbons@uq.edu.au)
+Nick Gibbons (n.gibbons@uq.edu.au) and Peter Jacobs
 
 ## License:
 bloxide use is governed by the GNU General Public License 3. This is a copyleft license, which means that any code based on bloxide must also be made freely available under a similar license.
